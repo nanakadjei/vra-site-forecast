@@ -16,7 +16,7 @@ Data: [Open-Meteo](https://open-meteo.com) (free, no key): NWP forecast, ERA5 re
 
 ## Hosting on GitHub Pages (daily rebuild)
 
-`.github/workflows/daily-forecast.yml` rebuilds and publishes a static copy of the app every day at 04:30 UTC (Ghana time). It installs the dependencies, runs the tests, runs `python build_static.py` (downloads data, fits every site model, writes `_site/data/<site>.json`) and deploys `_site/` to GitHub Pages. A full build takes up to about 30-40 minutes. If any site fails the deployment is skipped and the previous version stays online.
+`.github/workflows/daily-forecast.yml` rebuilds and publishes a static copy of the app every day at 05:00 UTC (= 05:00 Ghana time, which is on GMT). It installs the dependencies, runs the tests, runs `python build_static.py` (downloads data, fits every site model, writes `_site/data/<site>.json`) and deploys `_site/` to GitHub Pages. A full build takes up to about 30-40 minutes. If any site fails the deployment is skipped and the previous version stays online.
 
 One-time setup:
 
@@ -27,7 +27,7 @@ One-time setup:
 Notes:
 
 - Free GitHub Pages needs a **public** repository (private needs a paid plan). The code, site list and approximate coordinates are then public.
-- GitHub pauses scheduled workflows in a public repository after 60 days without repository activity. Re-enable it from the Actions tab or make a small commit.
+- GitHub pauses scheduled workflows in a public repository after 60 days without repository activity. A `keepalive` job in the workflow re-enables the workflow through the API on every run to reset that timer. This is a widely used workaround rather than a documented guarantee, so if the daily build ever stops, re-enable it from the Actions tab or make a small commit.
 - The static site has no live **Refresh model** button; the daily build replaces it. To test the static build locally: `python build_static.py --site lawra`, then serve `_site/` with `python -m http.server --directory _site`.
 - Check Open-Meteo's terms (non-commercial free tier) before relying on a public deployment.
 
