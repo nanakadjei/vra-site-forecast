@@ -1,0 +1,302 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>VRA Site Forecast</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+  /* Brand tokens: approximate VRA palette (deep blue + gold). Replace with official hex values if they differ. */
+  :root {
+    --brand:#0a2a5e; --brand-2:#123f86; --gold:#f2a900; --gold-ink:#7a5200;
+    --bg:#f3f5f9; --card:#ffffff; --ink:#14213d; --muted:#5a6781; --line:#e0e5ee; --soft:#eef2f9;
+    --good:#13795b; --bad:#b45309;
+    --sun:#e59a00; --temp:#d9480f; --rain:#1d5fd1; --shadow:0 1px 2px rgba(10,42,94,.06), 0 6px 20px rgba(10,42,94,.06);
+  }
+  @media (prefers-color-scheme: dark) { :root {
+    --bg:#0b1220; --card:#121b2e; --ink:#e8edf7; --muted:#9aa8c4; --line:#25324d; --soft:#17233b;
+    --good:#4ade9f; --bad:#f5b35c; --sun:#f5b93d; --temp:#ff9a62; --rain:#78a6ff; --gold-ink:#f2c25a;
+    --shadow:0 1px 2px rgba(0,0,0,.3), 0 6px 20px rgba(0,0,0,.25); } }
+  * { box-sizing:border-box; }
+  [hidden] { display:none !important; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:15px/1.5 "Inter",system-ui,-apple-system,"Segoe UI",sans-serif; -webkit-font-smoothing:antialiased; }
+  .wrap { max-width:1180px; margin:0 auto; padding:0 16px; }
+
+  /* header */
+  .top { background:linear-gradient(135deg,var(--brand) 0%,var(--brand-2) 100%); color:#fff; border-bottom:4px solid var(--gold); }
+  .top .wrap { display:flex; align-items:center; gap:16px; padding-top:18px; padding-bottom:18px; flex-wrap:wrap; }
+  .logo { width:46px; height:46px; border-radius:12px; background:rgba(255,255,255,.12); display:grid; place-items:center; flex:none; }
+  .top h1 { margin:0; font-size:21px; font-weight:650; letter-spacing:.01em; }
+  .top p { margin:2px 0 0; color:#c9d6f0; font-size:13.5px; }
+  .top .org { margin-left:auto; text-align:right; font-size:12px; color:#c9d6f0; letter-spacing:.08em; text-transform:uppercase; }
+  .top .org b { color:var(--gold); display:block; font-size:13px; }
+
+  /* toolbar */
+  .toolbar { display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin:18px 0 14px; }
+  select, button { font:inherit; padding:9px 14px; border:1px solid var(--line); border-radius:10px; background:var(--card); color:var(--ink); box-shadow:var(--shadow); }
+  select { min-width:260px; font-weight:550; }
+  button { cursor:pointer; transition:border-color .15s, background .15s; } button:hover { border-color:var(--brand-2); }
+  button:focus-visible, select:focus-visible { outline:2px solid var(--gold); outline-offset:2px; }
+  .chip { display:inline-block; padding:2px 10px; border-radius:999px; background:var(--soft); color:var(--brand-2); font-size:12px; font-weight:600; text-transform:capitalize; }
+  @media (prefers-color-scheme: dark) { .chip { color:#9db9f2; } }
+  .chip.warn { background:#fff4d6; color:var(--gold-ink); } @media (prefers-color-scheme: dark) { .chip.warn { background:#3a2f10; } }
+  .status { color:var(--muted); font-size:13px; }
+
+  /* cards */
+  .card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:16px 18px; box-shadow:var(--shadow); }
+  .card h2 { margin:0 0 10px; font-size:16px; font-weight:650; color:var(--brand); } @media (prefers-color-scheme: dark) { .card h2 { color:#b9cdf5; } }
+  .card h3 { margin:0 0 8px; font-size:11.5px; text-transform:uppercase; letter-spacing:.08em; color:var(--muted); font-weight:650; }
+  .hero { display:grid; grid-template-columns:1fr 1.25fr; gap:14px; align-items:stretch; }
+  .stack { display:grid; gap:14px; align-content:start; }
+  .big { font-size:30px; font-weight:700; line-height:1.1; color:var(--brand); } @media (prefers-color-scheme: dark) { .big { color:#fff; } }
+  .unit { font-size:12.5px; color:var(--muted); font-weight:500; }
+  .row { display:flex; justify-content:space-between; gap:8px; padding:3px 0; border-top:1px dashed var(--line); font-size:14px; } .row:first-of-type { margin-top:8px; }
+  .row span:first-child { color:var(--muted); } .row span:last-child { font-weight:600; }
+  .kpis { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+
+  /* map */
+  .mapcard { padding:0; overflow:hidden; display:flex; flex-direction:column; }
+  #map { flex:1; min-height:300px; z-index:0; }
+  .mapfoot { padding:10px 16px; display:flex; gap:10px; align-items:center; flex-wrap:wrap; font-size:13px; border-top:1px solid var(--line); }
+  .mapfoot .coords { font-variant-numeric:tabular-nums; color:var(--muted); }
+  .pin { background:var(--gold); border:3px solid var(--brand); border-radius:50% 50% 50% 0; transform:rotate(-45deg); width:26px; height:26px; box-shadow:0 2px 6px rgba(0,0,0,.4); }
+  .pin::after { content:""; position:absolute; inset:5px; background:var(--brand); border-radius:50%; }
+  .leaflet-container { font:inherit; }
+
+  /* chart + tables */
+  .section { margin-top:14px; }
+  .tabs { display:inline-flex; gap:4px; padding:4px; background:var(--soft); border-radius:12px; margin-bottom:12px; flex-wrap:wrap; }
+  .tabs button { border:0; box-shadow:none; background:transparent; padding:7px 14px; border-radius:9px; font-weight:600; color:var(--muted); }
+  .tabs button.on { background:var(--brand); color:#fff; } @media (prefers-color-scheme: dark) { .tabs button.on { background:var(--gold); color:#1a1300; } }
+  .chart { height:300px; position:relative; }
+  .note { color:var(--muted); font-size:13px; margin:8px 0 0; }
+  .scroll { overflow-x:auto; }
+  table { width:100%; border-collapse:collapse; font-size:13.5px; font-variant-numeric:tabular-nums; }
+  th, td { text-align:right; padding:8px 10px; border-bottom:1px solid var(--line); white-space:nowrap; }
+  th:first-child, td:first-child { text-align:left; }
+  th { color:var(--muted); font-weight:650; font-size:12px; text-transform:uppercase; letter-spacing:.04em; background:var(--soft); }
+  tbody tr:hover td { background:var(--soft); }
+  .good { color:var(--good); font-weight:650; } .bad { color:var(--bad); font-weight:650; }
+  .band { color:var(--muted); font-size:12px; }
+  .err { background:#fde8e8; color:#7a1d1d; padding:12px 16px; border-radius:10px; }
+  .notes { margin:18px 0 40px; color:var(--muted); font-size:13px; }
+  .src { margin:10px 0 0; font-size:11.5px; color:var(--muted); border-top:1px dashed var(--line); padding-top:6px; }
+  .src a, #sources a { color:var(--brand-2); } @media (prefers-color-scheme: dark) { .src a, #sources a { color:#9db9f2; } }
+  #sources td { white-space:normal; text-align:left; vertical-align:top; } #sources th { text-align:left; }
+  .legend { display:flex; gap:14px; flex-wrap:wrap; font-size:12.5px; color:var(--muted); margin-top:6px; }
+  .skeleton { height:120px; border-radius:14px; background:linear-gradient(90deg,var(--soft),var(--card),var(--soft)); background-size:200% 100%; animation:sh 1.4s infinite; }
+  @keyframes sh { 0%{background-position:200% 0} 100%{background-position:-200% 0} }
+  @media (max-width:860px) { .hero { grid-template-columns:1fr; } .kpis { grid-template-columns:1fr; } .top .org { display:none; } select { min-width:0; flex:1 1 100%; order:-1; } .toolbar > label { display:none; } }
+  @media (prefers-reduced-motion: reduce) { .skeleton { animation:none; } }
+</style>
+</head>
+<body>
+<div class="top"><div class="wrap">
+  <div class="logo" aria-hidden="true">
+    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#f2a900" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+  </div>
+  <div>
+    <h1>Site Weather &amp; Solar Forecast</h1>
+    <p>Day-, week- and month-ahead irradiation, temperature and rainfall for VRA generation sites</p>
+  </div>
+  <div class="org"><b>Volta River Authority</b>Water Resources &amp; Renewable Energy · KNUST</div>
+</div></div>
+
+<main class="wrap">
+  <div class="toolbar">
+    <label for="site" class="status">Site</label>
+    <select id="site"></select>
+    <span id="sitetype" class="chip"></span>
+    <button id="refresh" title="Re-download data and refit the model">Refresh model</button>
+    <span id="status" class="status" role="status"></span>
+  </div>
+  <div id="error"></div>
+  <div id="loading" class="hero" hidden><div class="skeleton"></div><div class="skeleton"></div></div>
+
+  <div id="content" hidden>
+    <div class="hero">
+      <div class="stack">
+        <div class="card" id="today"></div>
+        <div class="kpis" id="kpis"></div>
+      </div>
+      <div class="card mapcard">
+        <div id="map" aria-label="Map of VRA sites"></div>
+        <div class="mapfoot" id="mapfoot"></div>
+      </div>
+    </div>
+
+    <div class="section card">
+      <h2>Forecast outlook</h2>
+      <div class="tabs" id="vartabs" role="tablist"></div>
+      <div class="chart"><canvas id="chart" role="img" aria-label="35-day forecast chart"></canvas></div>
+      <p class="note" id="chartnote"></p>
+    </div>
+
+    <div class="section card">
+      <h2>Next 15 days</h2>
+      <div class="scroll"><table id="daily"></table></div>
+    </div>
+
+    <div class="section card">
+      <h2>Forecast skill (out-of-sample backtest)</h2>
+      <p class="note" id="btintro" style="margin-top:0;margin-bottom:10px"></p>
+      <div class="scroll"><table id="bt"></table></div>
+      <h2 style="margin-top:20px">Beyond two weeks (seasonal outlook)</h2>
+      <div class="scroll"><table id="btext"></table></div>
+    </div>
+    <div class="section card" id="sources-card">
+      <h2>Data sources</h2>
+      <div class="scroll"><table id="sources"></table></div>
+      <p class="note" id="srcnote"></p>
+    </div>
+    <p class="notes" id="notes"></p>
+  </div>
+</main>
+
+<script>
+const STATIC = !!window.VRA_STATIC;  // set by build_static.py in the GitHub Pages build
+const VARS = {
+  ghi_mj: {label:'Solar irradiation', unit:'MJ/m²/day', color:'--sun'},
+  tmax:   {label:'Max temperature',   unit:'°C',        color:'--temp'},
+  tmean:  {label:'Mean temperature',  unit:'°C',        color:'--temp'},
+  rain:   {label:'Rainfall',          unit:'mm/day',    color:'--rain'},
+};
+let DATA = null, SITES = [], chart = null, curVar = 'ghi_mj', map = null, markers = {};
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const $ = id => document.getElementById(id);
+const pct = x => (x*100).toFixed(0) + '%';
+const skillCls = x => x > 0 ? 'good' : 'bad';
+const pinIcon = L.divIcon({className:'', html:'<div class="pin"></div>', iconSize:[26,26], iconAnchor:[13,26], popupAnchor:[0,-26]});
+
+async function init() {
+  if (STATIC) $('refresh').hidden = true;  // static build: data is rebuilt daily by GitHub Actions
+  SITES = await (await fetch(STATIC ? 'data/sites.json' : '/api/sites')).json();
+  $('site').innerHTML = SITES.map(s => `<option value="${s.id}">${s.name}</option>`).join('');
+  $('site').onchange = () => load(false);
+  $('refresh').onclick = () => load(true);
+  $('vartabs').innerHTML = Object.entries(VARS).map(([k,v]) => `<button role="tab" data-v="${k}">${v.label}</button>`).join('');
+  $('vartabs').onclick = e => { if (e.target.dataset.v) { curVar = e.target.dataset.v; drawChart(); } };
+  initMap();
+  load(false);
+}
+
+function initMap() {
+  map = L.map('map', {scrollWheelZoom:false, zoomControl:true}).setView([8.3, -1.0], 6);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {maxZoom:18, attribution:'© OpenStreetMap contributors'}).addTo(map);
+  SITES.forEach(s => {
+    const m = L.circleMarker([s.lat, s.lon], {radius:6, color:'#0a2a5e', weight:2, fillColor:'#f2a900', fillOpacity:.9}).addTo(map);
+    m.bindTooltip(s.name); m.on('click', () => { $('site').value = s.id; load(false); });
+    markers[s.id] = m;
+  });
+}
+
+function showOnMap(site) {
+  if (window._pin) map.removeLayer(window._pin);
+  window._pin = L.marker([site.lat, site.lon], {icon:pinIcon, zIndexOffset:1000}).addTo(map)
+    .bindPopup(`<b>${site.name}</b><br>${site.lat.toFixed(2)}°N, ${site.lon.toFixed(2)}°E${site.verified ? '' : '<br><i>approximate location</i>'}`);
+  Object.entries(markers).forEach(([id, m]) => m.setStyle({opacity: id === site.id ? 0 : 1, fillOpacity: id === site.id ? 0 : .9}));
+  map.invalidateSize();
+  map.flyTo([site.lat, site.lon], 8, {duration:.8});
+  $('mapfoot').innerHTML = `<span class="chip">${site.type}</span><b>${site.name}</b>
+    <span class="coords">${site.lat.toFixed(3)}°, ${site.lon.toFixed(3)}°</span>
+    ${site.verified ? '' : '<span class="chip warn">approximate location</span>'}`;
+}
+
+async function load(refresh) {
+  $('error').innerHTML = ''; $('content').hidden = true; $('loading').hidden = false;
+  $('status').textContent = STATIC ? 'Loading…' : 'Loading… the first load for a site downloads ~20 years of data and can take a few minutes.';
+  try {
+    const r = await fetch(STATIC ? 'data/' + $('site').value + '.json' : '/api/forecast/' + $('site').value + (refresh ? '?refresh=1' : ''));
+    const j = await r.json();
+    if (!r.ok) throw new Error(j.error || r.statusText);
+    DATA = j; $('loading').hidden = true; $('content').hidden = false; $('status').textContent = '';
+    render();
+  } catch (e) {
+    $('loading').hidden = true; $('status').textContent = '';
+    $('error').innerHTML = `<div class="err">Could not load forecast: ${e.message}</div>`;
+  }
+}
+
+function kpiCard(title, s) {
+  return `<div class="card"><h3>${title}</h3>
+    <div class="big">${s.ghi_kwh_m2_mean}<span class="unit"> kWh/m²/day</span></div>
+    <div class="unit">${s.start.slice(5)} → ${s.end.slice(5)}</div>
+    <div class="row"><span>Temp mean / max</span><span>${s.tmean} / ${s.tmax} °C</span></div>
+    <div class="row"><span>Total rain</span><span>${s.rain_total_mm} mm</span></div>
+    <div class="row"><span>Expected rain days</span><span>${s.expected_rain_days}</span></div>
+    <p class="src">Source: Open-Meteo forecast + ERA5 climatology</p></div>`;
+}
+
+function drawSources() {
+  const d = DATA;
+  $('sources').innerHTML = `<thead><tr><th>Data</th><th>Provider</th><th>Used for</th><th>Licence</th></tr></thead><tbody>` +
+    d.sources.map(s => `<tr><td><b>${s.name}</b></td><td>${s.url ? `<a href="${s.url}" target="_blank" rel="noopener">${s.provider}</a>` : s.provider}</td><td>${s.used_for}</td><td>${s.licence || '–'}</td></tr>`).join('') + '</tbody>';
+  $('srcnote').textContent = `Forecast issued ${d.generated}. ERA5 data used up to ${d.era5_last_day} (ERA5 lags real time by about 5 days). Archived forecasts used from 2022. Charts: Chart.js; map: Leaflet. Results are model estimates, not plant measurements.` + (d.built_at ? ` Site rebuilt automatically ${d.built_at}.` : '');
+}
+
+function render() {
+  const d = DATA, t = d.daily[0];
+  $('sitetype').textContent = d.site.type;
+  $('today').innerHTML = `<h3>Today · ${t.date}</h3>
+    <div class="big">${(t.ghi_mj/3.6).toFixed(1)}<span class="unit"> kWh/m² irradiation</span></div>
+    <div class="row"><span>Temp mean / max</span><span>${t.tmean.toFixed(1)} / ${t.tmax.toFixed(1)} °C</span></div>
+    <div class="row"><span>Rain chance (≥1 mm)</span><span>${pct(t.rain_prob)}</span></div>
+    <div class="row"><span>Expected rain</span><span>${t.rain.toFixed(1)} mm</span></div>
+    <p class="src">Source: Open-Meteo weather-model forecast, bias-corrected with ERA5 · issued ${d.generated}</p>`;
+  $('kpis').innerHTML = kpiCard('Week ahead', d.summary.week) + kpiCard('Month ahead', d.summary.month);
+  showOnMap(d.site);
+  drawChart(); drawDaily(); drawBacktest(); drawSources();
+  $('notes').innerHTML = d.notes.map(n => '• ' + n).join('<br>') +
+    (d.site.verified ? '' : '<br>• Site coordinates are approximate and unverified (see sites.json).') +
+    `<br>• Model trained on ${d.model_trained_on}.`;
+}
+
+function drawChart() {
+  const v = VARS[curVar], rows = DATA.daily, isRain = curVar === 'rain';
+  document.querySelectorAll('#vartabs button').forEach(b => { const on = b.dataset.v === curVar; b.classList.toggle('on', on); b.setAttribute('aria-selected', on); });
+  const color = css(v.color), labels = rows.map(r => r.date.slice(5));
+  const split = rows.findIndex(r => r.lead > 15);  // outlook boundary
+  const ds = isRain ? [
+    {label:'Expected rain', data:rows.map(r=>r.rain), borderColor:color, backgroundColor:color+'aa', type:'bar', yAxisID:'y', borderRadius:3},
+    {label:'Rain chance (%)', data:rows.map(r=>Math.round(r.rain_prob*100)), borderColor:css('--ink'), borderWidth:2, pointRadius:0, type:'line', yAxisID:'y2', tension:.3},
+  ] : [
+    {label:'P90', data:rows.map(r=>r[curVar+'_p90']), borderWidth:0, pointRadius:0, fill:'+1', backgroundColor:color+'33', type:'line'},
+    {label:'P10', data:rows.map(r=>r[curVar+'_p10']), borderWidth:0, pointRadius:0, fill:false, type:'line'},
+    {label:v.label, data:rows.map(r=>r[curVar]), borderColor:color, borderWidth:2.5, pointRadius:0, tension:.3, type:'line',
+     segment:{borderDash:c => (split >= 0 && c.p0DataIndex >= split - 1) ? [5,4] : undefined}},
+  ];
+  if (chart) chart.destroy();
+  chart = new Chart($('chart'), {data:{labels, datasets:ds}, options:{
+    responsive:true, maintainAspectRatio:false, interaction:{mode:'index', intersect:false},
+    plugins:{legend:{display:false}, tooltip:{callbacks:{label:c=>`${c.dataset.label}: ${c.parsed.y.toFixed(1)} ${c.dataset.yAxisID==='y2'?'%':v.unit}`}}},
+    scales:{y:{title:{display:true, text:v.unit, color:css('--muted')}, grid:{color:css('--line')}, ticks:{color:css('--muted')}, beginAtZero:isRain||curVar==='ghi_mj'},
+            ...(isRain ? {y2:{position:'right', min:0, max:100, grid:{display:false}, title:{display:true, text:'rain chance %', color:css('--muted')}, ticks:{color:css('--muted')}}} : {}),
+            x:{grid:{display:false}, ticks:{color:css('--muted'), maxTicksLimit:12}}}}});
+  $('chartnote').textContent = (isRain ? 'Bars = expected rain (a probability-weighted average, so dry-season days show small non-zero values); line = chance of ≥1 mm. ' : 'Line = best estimate; shaded band = 80% interval (P10–P90); dashed = seasonal outlook beyond day 15. ') +
+    'Days 0–15 use the weather model; days 16–35 have little day-to-day skill. Source: Open-Meteo forecast (days 0–15), ERA5 climatology and anomalies (days 16–35).';
+}
+
+function drawDaily() {
+  const rows = DATA.daily.filter(r => r.lead <= 15);
+  $('daily').innerHTML = `<thead><tr><th>Date</th><th>Lead</th><th>Irradiation MJ/m²</th><th>Temp mean °C</th><th>Temp max °C</th><th>Rain mm</th><th>Rain chance</th></tr></thead><tbody>` +
+    rows.map(r => `<tr><td>${r.date}</td><td>${r.lead}</td><td>${r.ghi_mj.toFixed(1)} <span class="band">(${r.ghi_mj_p10.toFixed(0)}–${r.ghi_mj_p90.toFixed(0)})</span></td>
+      <td>${r.tmean.toFixed(1)}</td><td>${r.tmax.toFixed(1)}</td><td>${r.rain.toFixed(1)}</td><td>${pct(r.rain_prob)}</td></tr>`).join('') + '</tbody>';
+}
+
+function drawBacktest() {
+  const b = DATA.backtest;
+  $('btintro').textContent = `Fitted on data up to ${b.split}; scored on ${b.test_start} → ${b.test_end} against ${b.truth}. Skill = 1 − error ÷ baseline error (positive = better than the baseline). Sources: Open-Meteo archived forecasts and ERA5.`;
+  $('bt').innerHTML = `<thead><tr><th>Lead (days)</th><th>Irradiation MAE: model / raw NWP / climatology</th><th>Skill vs raw NWP</th><th>Skill vs climatology</th><th>Temp MAE: model / raw</th><th>Wet/dry accuracy: model / raw NWP / always dry</th></tr></thead><tbody>` +
+    b.short_range.map(r => `<tr><td>${r.lead}</td><td>${r.ghi_mj_mae_model.toFixed(2)} / ${r.ghi_mj_mae_raw_nwp.toFixed(2)} / ${r.ghi_mj_mae_clim.toFixed(2)}</td>
+      <td class="${skillCls(r.ghi_mj_skill_vs_raw_nwp)}">${pct(r.ghi_mj_skill_vs_raw_nwp)}</td><td class="${skillCls(r.ghi_mj_skill_vs_clim)}">${pct(r.ghi_mj_skill_vs_clim)}</td>
+      <td>${r.tmean_mae_model.toFixed(2)} / ${r.tmean_mae_raw_nwp.toFixed(2)}</td>
+      <td>${r.wet_dry_acc_model != null ? pct(r.wet_dry_acc_model) : '–'} / ${pct(r.wet_dry_acc_raw_nwp)} / ${pct(r.wet_dry_acc_always_dry)}</td></tr>`).join('') + '</tbody>';
+  $('btext').innerHTML = `<thead><tr><th>Lead from last observation</th><th>Irradiation skill vs climatology</th><th>Temperature skill vs climatology</th></tr></thead><tbody>` +
+    b.extended.map(r => `<tr><td>${r.lead_from_last_obs} days</td><td class="${skillCls(r.ghi_mj_skill_vs_clim)}">${pct(r.ghi_mj_skill_vs_clim)}</td><td class="${skillCls(r.tmean_skill_vs_clim)}">${pct(r.tmean_skill_vs_clim)}</td></tr>`).join('') + '</tbody>';
+}
+init();
+</script>
+</body>
+</html>

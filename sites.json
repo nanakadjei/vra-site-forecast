@@ -1,0 +1,12 @@
+{
+  "_note": "Coordinates are approximate and NOT verified against VRA records. Replace with surveyed plant coordinates before operational use.",
+  "sites": [
+    {"id": "akosombo", "name": "Akosombo (hydro, reservoir)", "lat": 6.30, "lon": 0.05, "type": "hydro", "verified": false},
+    {"id": "kpong", "name": "Kpong (hydro)", "lat": 6.15, "lon": 0.13, "type": "hydro", "verified": false},
+    {"id": "bui", "name": "Bui (hydro)", "lat": 8.28, "lon": -2.23, "type": "hydro", "verified": false},
+    {"id": "lawra", "name": "Lawra solar", "lat": 10.65, "lon": -2.90, "type": "solar", "verified": false},
+    {"id": "kaleo", "name": "Kaleo solar", "lat": 10.37, "lon": -2.60, "type": "solar", "verified": false},
+    {"id": "poku", "name": "Poku solar", "lat": 9.40, "lon": -1.70, "type": "solar", "verified": false},
+    {"id": "volta-islands", "name": "Volta Lake islands (mini-grids)", "lat": 7.40, "lon": 0.05, "type": "minigrid", "verified": false}
+  ]
+}

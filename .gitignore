@@ -1,0 +1,7 @@
+.cache/
+_site/
+__pycache__/
+*.pyc
+.pytest_cache/
+.DS_Store
+.claude/
